@@ -186,3 +186,29 @@ export async function deleteContrat(id) {
   if (!res.ok) throw new Error('Erreur suppression contrat');
   return getContrats();
 }
+
+// ─── Demandes ─────────────────────────────────
+
+export async function getDemandes() {
+  const res = await fetch('/api/demandes');
+  if (!res.ok) throw new Error('Erreur chargement demandes');
+  return res.json();
+}
+
+export async function saveDemande(demande) {
+  const isNew = !demande._id && !demande.id;
+  const url   = isNew ? '/api/demandes' : `/api/demandes/${demande._id || demande.id}`;
+  const res = await fetch(url, {
+    method: isNew ? 'POST' : 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(demande),
+  });
+  if (!res.ok) throw new Error('Erreur sauvegarde demande');
+  return getDemandes();
+}
+
+export async function deleteDemande(id) {
+  const res = await fetch(`/api/demandes/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Erreur suppression demande');
+  return getDemandes();
+}

@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard, Users, FileText, History, TrendingUp, CalendarDays,
-  Plus, Edit2, Trash2, Building2, PenLine,
+  Plus, Edit2, Trash2, PenLine,
   ChevronRight, Banknote, Clock, Search,
-  Save, ArrowLeft, FileDown, HardHat, X,
+  Save, ArrowLeft, FileDown, HardHat, X, BookOpen,
+  MessageSquare,
 } from 'lucide-react';
 import * as store from './store';
 
@@ -29,7 +30,8 @@ const ETATS = {
   en_attente: { label: 'En Attente', color: '#d97706', bg: '#fef3c7', border: '#fcd34d', icon: '⏳' },
 };
 
-const QUALIFICATIONS  = ['Ouvrier', "Chef d'équipe", 'Technicien', 'Conducteur', 'Ingénieur', 'Agent de sécurité', 'Autre'];
+const QUALIFICATIONS  = ['Ouvrier', "Chef d'équipe", 'Technicien', 'Conducteur', 'Ingénieur', 'Agent de sécurité', 'Administratif', 'Autre'];
+const LODAFIN_QUALS   = ["Chef d'équipe", 'Technicien', 'Conducteur', 'Ingénieur', 'Administratif'];
 const CONTRACT_TYPES  = ['ANAPEC', 'CDI', 'CDD', 'Journalier', 'Saisonnier'];
 
 // Retourne le statut du contrat CDD : jours restants, couleur, label
@@ -175,13 +177,14 @@ function DeductionsList({ deductions, onChange, small = false }) {
 // ─────────────────────────────────────────────
 function Sidebar({ view, setView }) {
   const nav = [
-    { id: 'dashboard',  icon: LayoutDashboard, label: 'Dashboard'  },
-    { id: 'employees',  icon: Users,           label: 'Employés'   },
-    { id: 'contrats',   icon: PenLine,         label: 'Contrats'   },
-    { id: 'pointage',   icon: CalendarDays,    label: 'Pointage'   },
-    { id: 'paie',       icon: FileText,        label: 'Paie'       },
-    { id: 'historique', icon: History,         label: 'Historique' },
-    { id: 'finance',    icon: TrendingUp,      label: 'Finance'    },
+    { id: 'dashboard',      icon: LayoutDashboard, label: 'Dashboard'      },
+    { id: 'employees',      icon: Users,           label: 'Employés'       },
+    { id: 'contrats',       icon: PenLine,         label: 'Contrats'       },
+    { id: 'pointage',       icon: CalendarDays,    label: 'Pointage'       },
+    { id: 'paie',           icon: FileText,        label: 'Paie'           },
+    { id: 'historique',     icon: History,         label: 'Historique'     },
+    { id: 'finance',        icon: TrendingUp,      label: 'Finance'        },
+    { id: 'documentation',  icon: BookOpen,        label: 'Documentation'  },
   ];
   return (
     <div style={{ width: '220px', background: '#0f2d5a', display: 'flex', flexDirection: 'column', minHeight: '100vh', flexShrink: 0 }}>
@@ -797,14 +800,18 @@ function PasserPaieView({ employees, setBulletins }) {
         const nbDays = new Date(y, m, 0).getDate();
         const days = Array.from({ length: nbDays }, (_, i) => i + 1);
         const emp = employees.find(e => String(e._id || e.id) === String(pt.employeeId));
-        const isJourn = emp?.typeContrat === 'Journalier';
+        const isJourn  = emp?.typeContrat === 'Journalier';
+        const isLodafE = LODAFIN_QUALS.includes(emp?.qualification);
         let ouv, salCalc;
         if (isJourn) {
           ouv = nbDays;
           salCalc = Math.round(pt.salaireBrut * p);
+        } else if (isLodafE) {
+          ouv = 26;
+          salCalc = Math.round((pt.salaireBrut / 26) * p);
         } else {
-          ouv = days.filter(d => { const dow = new Date(y, m-1, d).getDay(); return dow !== 0 && dow !== 6; }).length;
-          salCalc = ouv > 0 ? Math.round((pt.salaireBrut / ouv) * p) : 0;
+          ouv = 30;
+          salCalc = Math.round((pt.salaireBrut / 30) * p);
         }
         map[String(pt.employeeId)] = { p, ouv, salCalc, salaireBrut: pt.salaireBrut, isJourn };
       });
@@ -845,24 +852,6 @@ function PasserPaieView({ employees, setBulletins }) {
   }));
   const toggleExpand = (emp) => setEmpStates(prev => ({
     ...prev, [empId(emp)]: { ...getState(emp), expanded: !getState(emp).expanded }
-  }));
-  const addExtraDed = (emp, preset) => setEmpStates(prev => ({
-    ...prev, [empId(emp)]: {
-      ...getState(emp),
-      extraDeductions: [...getState(emp).extraDeductions, { key: preset.id, label: preset.label, amount: preset.defaultAmount }]
-    }
-  }));
-  const removeExtraDed = (emp, key) => setEmpStates(prev => ({
-    ...prev, [empId(emp)]: {
-      ...getState(emp),
-      extraDeductions: getState(emp).extraDeductions.filter(d => d.key !== key)
-    }
-  }));
-  const updateExtraDed = (emp, key, amount) => setEmpStates(prev => ({
-    ...prev, [empId(emp)]: {
-      ...getState(emp),
-      extraDeductions: getState(emp).extraDeductions.map(d => d.key === key ? {...d, amount: parseFloat(amount)||0} : d)
-    }
   }));
 
   const handleLancer = async () => {
@@ -976,7 +965,6 @@ function PasserPaieView({ employees, setBulletins }) {
               const deds    = getDeductions(emp);
               const net     = getNet(emp);
               const totalDed = deds.reduce((s, d) => s + (parseFloat(d.amount)||0), 0);
-              const availExtra = DEDUCTION_PRESETS.filter(p => !deds.find(d => d.key === p.id));
 
               return (
                 <React.Fragment key={empId(emp)}>
@@ -1145,7 +1133,6 @@ function PaieView({ employees, setBulletins, selectedEmp, setSelectedEmp }) {
 
   const total      = deductions.reduce((s, d) => s + (parseFloat(d.amount)||0), 0);
   const netAPayer  = employee ? (parseFloat(employee.salaireBrut)||0) - total : 0;
-  const available  = DEDUCTION_PRESETS.filter(p => !deductions.find(d => d.key===p.id));
 
   const handleSave = async () => {
     if (!employee) return;
@@ -1821,16 +1808,18 @@ function PointageView({ employees }) {
   const days = Array.from({ length: nbJours }, (_, i) => i + 1);
 
   const isJournalier = (row) => row.typeContrat === 'Journalier';
-
-  // Journaliers: aucun jour bloqué. Mensuels: samedi+dimanche bloqués.
-  const isBlockedDay = (row, day) => {
-    if (isJournalier(row)) return false;
-    return isWeekend(mois, day);
-  };
+  const isLodaf      = (row) => LODAFIN_QUALS.includes(row.qualification);
 
   const isSunday = (day) => {
     const [m, y] = mois.split('/').map(Number);
     return new Date(y, m - 1, day).getDay() === 0;
+  };
+
+  // Journaliers: aucun jour bloqué. Lodafin (26j): samedi+dimanche bloqués. Ouvriers (30j): dimanche seulement.
+  const isBlockedDay = (row, day) => {
+    if (isJournalier(row)) return false;
+    if (isLodaf(row)) return isWeekend(mois, day);
+    return isSunday(day);
   };
 
   // Init / load rows when mois changes or employees change
@@ -1856,9 +1845,9 @@ function PointageView({ employees }) {
     })();
   }, [mois, employees.length]);
 
-  const toggleCell = (rowIdx, day) => {
-    setRows(prev => prev.map((r, i) => {
-      if (i !== rowIdx) return r;
+  const toggleCell = (empId, day) => {
+    setRows(prev => prev.map(r => {
+      if (String(r.employeeId) !== String(empId)) return r;
       const cur  = r.jours[String(day)] || '';
       const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
       return { ...r, jours: { ...r.jours, [String(day)]: next } };
@@ -1866,14 +1855,14 @@ function PointageView({ employees }) {
     setSaved(false);
   };
 
-  const updateObs = (rowIdx, val) => {
-    setRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, observation: val } : r));
+  const updateObs = (empId, val) => {
+    setRows(prev => prev.map(r => String(r.employeeId) === String(empId) ? { ...r, observation: val } : r));
     setSaved(false);
   };
 
-  const fillRow = (rowIdx, statut) => {
-    setRows(prev => prev.map((r, i) => {
-      if (i !== rowIdx) return r;
+  const fillRow = (empId, statut) => {
+    setRows(prev => prev.map(r => {
+      if (String(r.employeeId) !== String(empId)) return r;
       const jours = {};
       days.forEach(d => { jours[String(d)] = isBlockedDay(r, d) ? '' : statut; });
       return { ...r, jours };
@@ -1921,14 +1910,17 @@ function PointageView({ employees }) {
     const c = Object.values(row.jours).filter(v => v === 'C').length;
     const m = Object.values(row.jours).filter(v => v === 'M').length;
     if (isJournalier(row)) {
-      // Ouvrier journalier: taux journalier × jours présents (dimanche inclus)
       const salCalc = Math.round(row.salaireBrut * p);
-      return { p, a, c, m, ouv: nbJours, salCalc };
+      return { p, a, c, m, ouv: nbJours, salCalc, base: null };
     }
-    // Mensuel: salaire / jours ouvrables (lun-sam, dimanche exclu) × présents
-    const ouv = days.filter(d => !isWeekend(mois, d)).length;
-    const salCalc = ouv > 0 ? Math.round((row.salaireBrut / ouv) * p) : 0;
-    return { p, a, c, m, ouv, salCalc };
+    if (isLodaf(row)) {
+      // Lodafin (cadres/employés): base fixe 26j, samedi+dimanche non travaillés
+      const salCalc = Math.round((row.salaireBrut / 26) * p);
+      return { p, a, c, m, ouv: 26, salCalc, base: 26 };
+    }
+    // Ouvriers: base fixe 30j, samedi travaillé, dimanche repos
+    const salCalc = Math.round((row.salaireBrut / 30) * p);
+    return { p, a, c, m, ouv: 30, salCalc, base: 30 };
   };
 
   return (
@@ -2034,13 +2026,17 @@ function PointageView({ employees }) {
                     <td style={{ padding: '6px 10px', fontWeight: 700, color: '#0f2d5a', fontSize: '11px', position: 'sticky', left: 0, background: ri%2===0?'#fff':'#f8fafc', borderRight: '2px solid #e2e8f0', zIndex: 1 }}>
                       <div>{row.employeeNom}</div>
                       <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 400 }}>{row.qualification} — {row.matricule}</div>
-                      <span style={{ fontSize: '8px', fontWeight: 700, color: isJournalier(row) ? '#d97706' : '#2563eb', background: isJournalier(row) ? '#fef3c7' : '#eff6ff', border: `1px solid ${isJournalier(row) ? '#fcd34d' : '#bfdbfe'}`, borderRadius: '3px', padding: '1px 5px', display: 'inline-block', marginTop: '2px' }}>
-                        {isJournalier(row) ? '📅 Journalier' : '📆 Mensuel'}
+                      <span style={{ fontSize: '8px', fontWeight: 700,
+                        color: isJournalier(row) ? '#d97706' : isLodaf(row) ? '#7c3aed' : '#2563eb',
+                        background: isJournalier(row) ? '#fef3c7' : isLodaf(row) ? '#f5f3ff' : '#eff6ff',
+                        border: `1px solid ${isJournalier(row) ? '#fcd34d' : isLodaf(row) ? '#ddd6fe' : '#bfdbfe'}`,
+                        borderRadius: '3px', padding: '1px 5px', display: 'inline-block', marginTop: '2px' }}>
+                        {isJournalier(row) ? '📅 Journalier' : isLodaf(row) ? '🏢 Lodaf 26j' : '🔨 Ouvrier 30j'}
                       </span>
                       {/* Fill shortcuts */}
                       <div style={{ display: 'flex', gap: '2px', marginTop: '3px' }}>
                         {['P','A'].map(s => (
-                          <button key={s} onClick={() => fillRow(ri, s)}
+                          <button key={s} onClick={() => fillRow(row.employeeId, s)}
                             title={`Remplir tout ${s}`}
                             style={{ fontSize: '8px', background: STATUTS[s].bg, color: STATUTS[s].color, border: `1px solid ${STATUTS[s].border}`, borderRadius: '2px', padding: '1px 4px', cursor: 'pointer' }}>
                             Tout {s}
@@ -2058,7 +2054,7 @@ function PointageView({ employees }) {
                       // Dimanche non-bloqué (journalier): fond orangé pour distinguer
                       const emptyBg = (!blocked && sun) ? '#fff7ed' : s.bg;
                       return (
-                        <td key={d} onClick={() => !blocked && toggleCell(ri, d)}
+                        <td key={d} onClick={() => !blocked && toggleCell(row.employeeId, d)}
                           style={{
                             padding: '2px', textAlign: 'center',
                             background: blocked ? '#f1f5f9' : (val ? s.bg : emptyBg),
@@ -2082,7 +2078,7 @@ function PointageView({ employees }) {
                       {st.salCalc.toLocaleString()} <span style={{ fontSize: '8px', color: '#94a3b8' }}>DH</span>
                     </td>
                     <td style={{ padding: '4px 6px' }}>
-                      <input value={row.observation} onChange={e => updateObs(ri, e.target.value)}
+                      <input value={row.observation} onChange={e => updateObs(row.employeeId, e.target.value)}
                         placeholder="Observation..."
                         style={{ width: '100%', border: '1px solid #e2e8f0', borderRadius: '4px', padding: '3px 5px', fontSize: '10px', background: 'transparent', boxSizing: 'border-box' }}
                       />
@@ -2165,6 +2161,7 @@ function ContratModal({ employees, contrats, editContrat, onSave, onClose }) {
     employeeId: '', employeeNom: '', matricule: '',
     typeContrat: 'CDI', dateDebut: today, dateFin: '',
     dateSignature: '', dateApprobationAnapec: '',
+    salaire: 0, typeSalaire: 'mensuel',
     statut: 'actif', motifFin: '', note: '',
   });
   const [cloturerPrecedent, setCloturerPrecedent] = useState(false);
@@ -2190,8 +2187,6 @@ function ContratModal({ employees, contrats, editContrat, onSave, onClose }) {
       return alert('Date de fin obligatoire pour ce type de contrat');
     onSave(form, cloturerPrecedent ? { contrat: contratActif, motif: motifCloture } : null);
   };
-
-  const tc = CONTRAT_TYPE_COLORS[form.typeContrat] || CONTRAT_TYPE_COLORS['Autre'];
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -2237,6 +2232,29 @@ function ContratModal({ employees, contrats, editContrat, onSave, onClose }) {
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Salaire + Type */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            <div>
+              <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'4px' }}>Salaire du contrat (DH) *</label>
+              <input type="number" value={form.salaire} onChange={e => setForm(f => ({...f, salaire: parseFloat(e.target.value)||0}))}
+                style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'8px 10px', fontSize:'13px', boxSizing:'border-box' }} />
+            </div>
+            <div>
+              <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'6px' }}>Type de salaire *</label>
+              <div style={{ display:'flex', gap:'6px' }}>
+                {[['mensuel','📆 Par mois'],['journalier','📅 Par jour']].map(([v, l]) => (
+                  <button key={v} onClick={() => setForm(f => ({...f, typeSalaire:v}))}
+                    style={{ flex:1, padding:'7px 6px', borderRadius:'7px', fontSize:'12px', fontWeight:700, cursor:'pointer',
+                      border:`2px solid ${form.typeSalaire===v ? (v==='mensuel'?'#2563eb':'#d97706') : '#e2e8f0'}`,
+                      background: form.typeSalaire===v ? (v==='mensuel'?'#eff6ff':'#fef3c7') : '#f8fafc',
+                      color: form.typeSalaire===v ? (v==='mensuel'?'#2563eb':'#d97706') : '#94a3b8' }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -2368,6 +2386,17 @@ function ContratTimelineModal({ employee, contrats, onApprouver, onSigner, onClo
                     {st === 'termine' && <span style={{ fontSize:'10px', color:'#94a3b8', marginLeft:'auto' }}>Clôturé</span>}
                   </div>
 
+                  {/* Salaire */}
+                  {c.salaire > 0 && (
+                    <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px' }}>
+                      <span style={{ background:'#f0fdf4', color:'#16a34a', border:'1px solid #86efac', borderRadius:'5px', padding:'3px 10px', fontSize:'12px', fontWeight:800 }}>
+                        💰 {(c.salaire||0).toLocaleString()} DH
+                      </span>
+                      <span style={{ background: c.typeSalaire==='journalier'?'#fef3c7':'#eff6ff', color: c.typeSalaire==='journalier'?'#d97706':'#2563eb', border:`1px solid ${c.typeSalaire==='journalier'?'#fcd34d':'#bfdbfe'}`, borderRadius:'5px', padding:'3px 9px', fontSize:'11px', fontWeight:700 }}>
+                        {c.typeSalaire === 'journalier' ? '📅 Par jour' : '📆 Par mois'}
+                      </span>
+                    </div>
+                  )}
                   {/* Dates */}
                   <div style={{ display:'flex', gap:'16px', fontSize:'12px', color:'#475569', marginBottom:'8px', flexWrap:'wrap' }}>
                     <span>📅 Début: <strong>{c.dateDebut}</strong></span>
@@ -2622,14 +2651,14 @@ function ContratsView({ employees, contrats, setContrats }) {
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
           <thead>
             <tr style={{ background:'#0f2d5a' }}>
-              {['Employé','Contrat actuel','Depuis','Jusqu\'au','Statut','Historique','Actions'].map(h => (
+              {['Employé','Contrat actuel','Salaire','Depuis','Jusqu\'au','Statut','Historique','Actions'].map(h => (
                 <th key={h} style={{ padding:'11px 14px', textAlign:'left', fontSize:'10px', color:'#93c5fd', fontWeight:700, textTransform:'uppercase' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredEmps.length === 0 && (
-              <tr><td colSpan={7} style={{ padding:'40px', textAlign:'center', color:'#94a3b8' }}>Aucun employé trouvé</td></tr>
+              <tr><td colSpan={8} style={{ padding:'40px', textAlign:'center', color:'#94a3b8' }}>Aucun employé trouvé</td></tr>
             )}
             {filteredEmps.map((emp, i) => {
               const cur   = getCurrentContrat(emp._id || emp.id);
@@ -2667,6 +2696,18 @@ function ContratsView({ employees, contrats, setContrats }) {
                     ) : (
                       <span style={{ color:'#94a3b8', fontSize:'11px', fontStyle:'italic' }}>Aucun contrat</span>
                     )}
+                  </td>
+
+                  {/* Salaire */}
+                  <td style={{ padding:'12px 14px' }}>
+                    {cur?.salaire > 0 ? (
+                      <div>
+                        <div style={{ fontWeight:800, color:'#16a34a', fontSize:'12px' }}>{(cur.salaire).toLocaleString()} DH</div>
+                        <div style={{ fontSize:'9px', fontWeight:700, color: cur.typeSalaire==='journalier'?'#d97706':'#2563eb' }}>
+                          {cur.typeSalaire === 'journalier' ? '📅 /jour' : '📆 /mois'}
+                        </div>
+                      </div>
+                    ) : <span style={{ color:'#cbd5e1', fontSize:'11px' }}>—</span>}
                   </td>
 
                   {/* Depuis */}
@@ -2772,6 +2813,527 @@ function ContratsView({ employees, contrats, setContrats }) {
 }
 
 // ─────────────────────────────────────────────
+// DOCUMENTATION — CONSTANTS
+// ─────────────────────────────────────────────
+const DEMANDE_TYPES = [
+  'Demande de congé',
+  'Avance sur salaire',
+  'Réclamation salaire',
+  'Attestation de travail',
+  'Certificat de travail',
+  'Suggestion / Amélioration',
+  'Signalement',
+  'Autre',
+];
+
+const DEMANDE_STATUTS = {
+  recue:    { label: 'Reçue',           color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: '📥' },
+  en_cours: { label: 'En cours',        color: '#d97706', bg: '#fef3c7', border: '#fcd34d', icon: '⚙️' },
+  traitee:  { label: 'Acceptée مقبول', color: '#16a34a', bg: '#f0fdf4', border: '#86efac', icon: '✅' },
+  refusee:  { label: 'Refusée مرفود',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5', icon: '❌' },
+};
+
+const DEMANDE_PRIORITES = {
+  faible:   { label: 'Faible',   color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' },
+  normale:  { label: 'Normale',  color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+  urgente:  { label: 'Urgente',  color: '#dc2626', bg: '#fef2f2', border: '#fca5a5' },
+};
+
+// ─────────────────────────────────────────────
+// DEMANDE MODAL
+// ─────────────────────────────────────────────
+function DemandeModal({ demande, employees, onSave, onClose }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState(demande || {
+    titre: '', type: 'Demande de congé', employeeId: '', employeeNom: '',
+    expediteur: '', dateDemande: today, description: '', priorite: 'normale',
+    statut: 'recue', reponse: '', dateReponse: '', traitePar: '',
+  });
+
+  const handleEmpChange = (id) => {
+    const emp = employees.find(e => String(e._id || e.id) === id);
+    setForm(f => ({ ...f, employeeId: id, employeeNom: emp ? emp.nom : '', expediteur: '' }));
+  };
+
+  const submit = () => {
+    if (!form.titre.trim()) return alert('Titre / Objet obligatoire');
+    if (!form.employeeId && !form.expediteur.trim()) return alert('Indiquer l\'expéditeur (employé ou externe)');
+    onSave(form);
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:'12px', width:'600px', maxHeight:'92vh', overflow:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ padding:'14px 20px', background:'#0f2d5a', borderRadius:'12px 12px 0 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div style={{ fontWeight:700, color:'#fff', fontSize:'15px' }}>
+              {demande ? 'Modifier la Demande' : 'Nouvelle Demande'}
+            </div>
+            {demande?.reference && (
+              <div style={{ fontSize:'11px', color:'#fbbf24', marginTop:'2px', fontWeight:700, letterSpacing:'0.5px' }}>
+                Réf: {demande.reference}
+              </div>
+            )}
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:'6px', padding:'5px 8px', color:'#fff', cursor:'pointer' }}><X size={15} /></button>
+        </div>
+
+        <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'13px' }}>
+          {/* Objet */}
+          <Field label="Objet / Titre *" value={form.titre} onChange={v => setForm(f => ({...f, titre:v}))} />
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            {/* Type */}
+            <div>
+              <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'4px' }}>Type de demande</label>
+              <select value={form.type} onChange={e => setForm(f => ({...f, type:e.target.value}))}
+                style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'7px 10px', fontSize:'12px', boxSizing:'border-box' }}>
+                {DEMANDE_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+            {/* Date */}
+            <Field label="Date de réception" type="date" value={form.dateDemande} onChange={v => setForm(f => ({...f, dateDemande:v}))} />
+          </div>
+
+          {/* Expéditeur */}
+          <div>
+            <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'4px' }}>
+              Expéditeur (De qui) *
+            </label>
+            <select value={form.employeeId} onChange={e => handleEmpChange(e.target.value)}
+              style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'7px 10px', fontSize:'12px', boxSizing:'border-box', marginBottom:'6px' }}>
+              <option value="">-- Externe / Hors liste --</option>
+              {employees.map(emp => (
+                <option key={emp._id || emp.id} value={emp._id || emp.id}>{emp.nom} — {emp.matricule || 'N/A'}</option>
+              ))}
+            </select>
+            {!form.employeeId && (
+              <input value={form.expediteur} onChange={e => setForm(f => ({...f, expediteur:e.target.value}))}
+                placeholder="Nom de l'expéditeur externe..."
+                style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'7px 10px', fontSize:'12px', boxSizing:'border-box' }} />
+            )}
+          </div>
+
+          {/* Priorité */}
+          <div>
+            <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'6px' }}>Priorité</label>
+            <div style={{ display:'flex', gap:'8px' }}>
+              {Object.entries(DEMANDE_PRIORITES).map(([k, p]) => (
+                <button key={k} onClick={() => setForm(f => ({...f, priorite:k}))}
+                  style={{ flex:1, padding:'7px', borderRadius:'7px', fontSize:'12px', fontWeight:700, cursor:'pointer', border:`2px solid ${form.priorite===k ? p.color : '#e2e8f0'}`, background: form.priorite===k ? p.bg : '#f8fafc', color: form.priorite===k ? p.color : '#94a3b8' }}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'4px' }}>Description / Détails</label>
+            <textarea value={form.description} onChange={e => setForm(f => ({...f, description:e.target.value}))} rows={3}
+              style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'7px 10px', fontSize:'12px', boxSizing:'border-box', resize:'vertical' }} />
+          </div>
+
+          {/* Statut + Réponse (si modification) */}
+          {demande && (
+            <>
+              <hr style={{ border:'none', borderTop:'2px dashed #e2e8f0' }} />
+              <div>
+                <label style={{ fontSize:'11px', fontWeight:700, color:'#0f2d5a', display:'block', marginBottom:'8px' }}>TRAITEMENT DE LA DEMANDE</label>
+                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
+                  {Object.entries(DEMANDE_STATUTS).map(([k, s]) => (
+                    <button key={k} onClick={() => setForm(f => ({...f, statut:k}))}
+                      style={{ padding:'7px 12px', borderRadius:'7px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:`2px solid ${form.statut===k ? s.color : '#e2e8f0'}`, background: form.statut===k ? s.bg : '#f8fafc', color: form.statut===k ? s.color : '#94a3b8' }}>
+                      {s.icon} {s.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
+                  <Field label="Traité par" value={form.traitePar} onChange={v => setForm(f => ({...f, traitePar:v}))} />
+                  <Field label="Date de réponse" type="date" value={form.dateReponse} onChange={v => setForm(f => ({...f, dateReponse:v}))} />
+                </div>
+                <div>
+                  <label style={{ fontSize:'11px', fontWeight:700, color:'#475569', display:'block', marginBottom:'4px' }}>Réponse / Décision</label>
+                  <textarea value={form.reponse} onChange={e => setForm(f => ({...f, reponse:e.target.value}))} rows={3}
+                    placeholder="Entrer la réponse ou décision prise..."
+                    style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'7px 10px', fontSize:'12px', boxSizing:'border-box', resize:'vertical' }} />
+                </div>
+              </div>
+            </>
+          )}
+
+          <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end', borderTop:'1px solid #e2e8f0', paddingTop:'12px' }}>
+            <button onClick={onClose} style={{ padding:'8px 18px', border:'1px solid #e2e8f0', borderRadius:'7px', background:'#f8fafc', color:'#64748b', cursor:'pointer', fontSize:'13px' }}>Annuler</button>
+            <button onClick={submit}
+              style={{ padding:'8px 20px', background:'#0f2d5a', color:'white', border:'none', borderRadius:'7px', cursor:'pointer', fontSize:'13px', fontWeight:700, display:'flex', alignItems:'center', gap:'6px' }}>
+              <Save size={14} /> Sauvegarder
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DEMANDE DETAIL MODAL (lecture + réponse rapide)
+// ─────────────────────────────────────────────
+function DemandeDetailModal({ demande, onUpdateStatut, onClose }) {
+  const today = new Date().toISOString().split('T')[0];
+  const [reponse,     setReponse]     = useState(demande.reponse || '');
+  const [dateReponse, setDateReponse] = useState(demande.dateReponse || today);
+  const [traitePar,   setTraitePar]   = useState(demande.traitePar || '');
+  const [statut,      setStatut]      = useState(demande.statut || 'recue');
+  const st = DEMANDE_STATUTS[demande.statut] || DEMANDE_STATUTS.recue;
+  const pr = DEMANDE_PRIORITES[demande.priorite] || DEMANDE_PRIORITES.normale;
+
+  const expediteur = demande.employeeNom || demande.expediteur || '—';
+
+  const genRefReponse = () => {
+    if (demande.referenceReponse) return demande.referenceReponse;
+    const now = new Date();
+    const ym  = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const seq = (demande.reference || 'DEM-000000-000').split('-').pop();
+    return `REP-${ym}-${seq}`;
+  };
+
+  const handleSave = () => {
+    const referenceReponse = genRefReponse();
+    onUpdateStatut({ ...demande, statut, reponse, dateReponse, traitePar, referenceReponse });
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:'12px', width:'600px', maxHeight:'92vh', overflow:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.3)' }}>
+        {/* Header */}
+        <div style={{ padding:'14px 20px', background:'#0f2d5a', borderRadius:'12px 12px 0 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <div>
+            <div style={{ fontWeight:700, color:'#fff', fontSize:'14px' }}>{demande.titre}</div>
+            <div style={{ fontSize:'10px', color:'#93c5fd', marginTop:'2px' }}>
+              {demande.type} — {demande.dateDemande}
+              {demande.reference && (
+                <span style={{ marginLeft:'10px', background:'rgba(251,191,36,0.2)', color:'#fbbf24', borderRadius:'4px', padding:'1px 7px', fontWeight:800 }}>
+                  {demande.reference}
+                </span>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.2)', border:'none', borderRadius:'6px', padding:'5px 8px', color:'#fff', cursor:'pointer' }}><X size={15} /></button>
+        </div>
+
+        <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'14px' }}>
+          {/* Info ligne */}
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+            <span style={{ background:st.bg, color:st.color, border:`1px solid ${st.border}`, borderRadius:'6px', padding:'3px 10px', fontSize:'11px', fontWeight:700 }}>
+              {st.icon} {st.label}
+            </span>
+            <span style={{ background:pr.bg, color:pr.color, border:`1px solid ${pr.border}`, borderRadius:'6px', padding:'3px 10px', fontSize:'11px', fontWeight:700 }}>
+              {pr.label}
+            </span>
+            <span style={{ background:'#f8fafc', color:'#475569', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'3px 10px', fontSize:'11px', fontWeight:600 }}>
+              👤 {expediteur}
+            </span>
+          </div>
+
+          {/* Description */}
+          {demande.description && (
+            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:'8px', padding:'12px 14px' }}>
+              <div style={{ fontSize:'10px', fontWeight:700, color:'#94a3b8', marginBottom:'6px', textTransform:'uppercase' }}>Description</div>
+              <p style={{ fontSize:'13px', color:'#1e293b', margin:0, lineHeight:1.6, whiteSpace:'pre-wrap' }}>{demande.description}</p>
+            </div>
+          )}
+
+          {/* Réponse existante */}
+          {demande.reponse && (
+            <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:'8px', padding:'12px 14px' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+                <div style={{ fontSize:'10px', fontWeight:700, color:'#16a34a', textTransform:'uppercase' }}>
+                  Réponse — {demande.dateReponse} {demande.traitePar && `(par ${demande.traitePar})`}
+                </div>
+                {demande.referenceReponse && (
+                  <span style={{ fontSize:'10px', fontWeight:800, color:'#16a34a', background:'#dcfce7', border:'1px solid #86efac', borderRadius:'4px', padding:'1px 8px' }}>
+                    {demande.referenceReponse}
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize:'13px', color:'#1e293b', margin:0, lineHeight:1.6, whiteSpace:'pre-wrap' }}>{demande.reponse}</p>
+            </div>
+          )}
+
+          {/* Section traitement / réponse */}
+          <div style={{ border:'2px dashed #e2e8f0', borderRadius:'8px', padding:'14px' }}>
+            <div style={{ fontSize:'12px', fontWeight:700, color:'#0f2d5a', marginBottom:'4px' }}>Réponse & Décision</div>
+            <div style={{ fontSize:'10px', color:'#94a3b8', marginBottom:'10px' }}>
+              Réf réponse: <strong style={{ color:'#0f2d5a' }}>{genRefReponse()}</strong>
+            </div>
+
+            {/* Décision: Pending / Acceptée / Refusée */}
+            <div style={{ display:'flex', gap:'6px', marginBottom:'12px' }}>
+              {[
+                { k:'recue',    label:'⏳ Pending',          color:'#2563eb', bg:'#eff6ff', border:'#bfdbfe' },
+                { k:'traitee',  label:'✅ Acceptée مقبول',  color:'#16a34a', bg:'#f0fdf4', border:'#86efac' },
+                { k:'refusee',  label:'❌ Refusée مرفود',   color:'#dc2626', bg:'#fef2f2', border:'#fca5a5' },
+              ].map(s => (
+                <button key={s.k} onClick={() => setStatut(s.k)}
+                  style={{ flex:1, padding:'8px 6px', borderRadius:'7px', fontSize:'11px', fontWeight:700, cursor:'pointer',
+                    border:`2px solid ${statut===s.k ? s.color : '#e2e8f0'}`,
+                    background: statut===s.k ? s.bg : '#f8fafc',
+                    color: statut===s.k ? s.color : '#94a3b8' }}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px', marginBottom:'8px' }}>
+              <Field label="Traité par" value={traitePar} onChange={setTraitePar} />
+              <Field label="Date réponse" type="date" value={dateReponse} onChange={setDateReponse} />
+            </div>
+            <div>
+              <label style={{ fontSize:'11px', fontWeight:600, color:'#475569', display:'block', marginBottom:'3px' }}>Contenu de la réponse</label>
+              <textarea value={reponse} onChange={e => setReponse(e.target.value)} rows={3}
+                placeholder="Saisir la réponse ou décision..."
+                style={{ width:'100%', border:'1px solid #e2e8f0', borderRadius:'6px', padding:'7px 10px', fontSize:'12px', boxSizing:'border-box', resize:'vertical' }} />
+            </div>
+          </div>
+
+          <div style={{ display:'flex', gap:'10px', justifyContent:'flex-end' }}>
+            <button onClick={onClose} style={{ padding:'8px 18px', border:'1px solid #e2e8f0', borderRadius:'7px', background:'#f8fafc', color:'#64748b', cursor:'pointer', fontSize:'13px' }}>Fermer</button>
+            <button onClick={handleSave}
+              style={{ padding:'8px 20px', background:'#16a34a', color:'white', border:'none', borderRadius:'7px', cursor:'pointer', fontSize:'13px', fontWeight:700, display:'flex', alignItems:'center', gap:'6px' }}>
+              <Save size={14} /> Enregistrer la réponse
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTATION VIEW
+// ─────────────────────────────────────────────
+function DocumentationView({ employees, demandes, setDemandes }) {
+  const [tab,        setTab]        = useState('demandes');
+  const [search,     setSearch]     = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterSt,   setFilterSt]   = useState('');
+  const [filterPrio, setFilterPrio] = useState('');
+  const [showModal,  setShowModal]  = useState(false);
+  const [editing,    setEditing]    = useState(null);
+  const [detail,     setDetail]     = useState(null);
+
+  const filtered = demandes.filter(d => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || d.titre?.toLowerCase().includes(q)
+      || d.employeeNom?.toLowerCase().includes(q)
+      || d.expediteur?.toLowerCase().includes(q)
+      || d.reference?.toLowerCase().includes(q)
+      || d.referenceReponse?.toLowerCase().includes(q)
+      || d.description?.toLowerCase().includes(q);
+    const matchType   = !filterType || d.type === filterType;
+    const matchSt     = !filterSt   || d.statut === filterSt;
+    const matchPrio   = !filterPrio || d.priorite === filterPrio;
+    return matchSearch && matchType && matchSt && matchPrio;
+  });
+
+  const stats = {
+    recue:    demandes.filter(d => d.statut === 'recue').length,
+    en_cours: demandes.filter(d => d.statut === 'en_cours').length,
+    traitee:  demandes.filter(d => d.statut === 'traitee').length,
+    refusee:  demandes.filter(d => d.statut === 'refusee').length,
+    urgente:  demandes.filter(d => d.priorite === 'urgente' && d.statut !== 'traitee' && d.statut !== 'refusee').length,
+  };
+
+  const handleSave = async (form) => {
+    const updated = await store.saveDemande(form);
+    setDemandes(updated);
+    setShowModal(false);
+    setEditing(null);
+  };
+
+  const handleUpdate = async (form) => {
+    const updated = await store.saveDemande(form);
+    setDemandes(updated);
+    setDetail(null);
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Supprimer cette demande ?')) return;
+    setDemandes(await store.deleteDemande(id));
+  };
+
+  const TABS = [
+    { id: 'demandes', label: '📋 Demandes & Suivi' },
+  ];
+
+  return (
+    <div>
+      {/* Tabs */}
+      <div style={{ display:'flex', background:'#fff', borderBottom:'1px solid #e2e8f0', padding:'0 24px' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding:'12px 20px', border:'none', borderBottom:`3px solid ${tab===t.id?'#2563eb':'transparent'}`, background:'none', cursor:'pointer', fontSize:'13px', fontWeight: tab===t.id?700:400, color: tab===t.id?'#2563eb':'#64748b' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding:'24px', display:'flex', flexDirection:'column', gap:'16px' }}>
+
+        {/* Stats */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'10px' }}>
+          {[
+            { label:'Reçues',      value: stats.recue,    ...DEMANDE_STATUTS.recue    },
+            { label:'En cours',    value: stats.en_cours, ...DEMANDE_STATUTS.en_cours },
+            { label:'Traitées',    value: stats.traitee,  ...DEMANDE_STATUTS.traitee  },
+            { label:'Refusées',    value: stats.refusee,  ...DEMANDE_STATUTS.refusee  },
+            { label:'Urgentes',    value: stats.urgente,   color:'#dc2626', bg:'#fef2f2', border:'#fca5a5', icon:'🚨' },
+          ].map(s => (
+            <div key={s.label} style={{ background:'#fff', border:`1px solid ${s.border}`, borderRadius:'10px', padding:'12px 14px', display:'flex', alignItems:'center', gap:'10px' }}>
+              <span style={{ fontSize:'22px' }}>{s.icon}</span>
+              <div>
+                <div style={{ fontSize:'22px', fontWeight:800, color:s.color }}>{s.value}</div>
+                <div style={{ fontSize:'10px', color:'#64748b' }}>{s.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Filtres */}
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+          <div style={{ flex:1, position:'relative', minWidth:'200px' }}>
+            <Search size={13} style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', color:'#94a3b8' }} />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher demande, employé..."
+              style={{ width:'100%', boxSizing:'border-box', padding:'8px 10px 8px 30px', border:'1px solid #e2e8f0', borderRadius:'8px', fontSize:'13px' }} />
+          </div>
+          <select value={filterType} onChange={e => setFilterType(e.target.value)}
+            style={{ border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 10px', fontSize:'12px', color:'#475569', background:'#fff' }}>
+            <option value="">Tous les types</option>
+            {DEMANDE_TYPES.map(t => <option key={t}>{t}</option>)}
+          </select>
+          <select value={filterSt} onChange={e => setFilterSt(e.target.value)}
+            style={{ border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 10px', fontSize:'12px', color:'#475569', background:'#fff' }}>
+            <option value="">Tous les statuts</option>
+            {Object.entries(DEMANDE_STATUTS).map(([k,s]) => <option key={k} value={k}>{s.icon} {s.label}</option>)}
+          </select>
+          <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
+            style={{ border:'1px solid #e2e8f0', borderRadius:'8px', padding:'8px 10px', fontSize:'12px', color:'#475569', background:'#fff' }}>
+            <option value="">Toutes priorités</option>
+            {Object.entries(DEMANDE_PRIORITES).map(([k,p]) => <option key={k} value={k}>{p.label}</option>)}
+          </select>
+          <button onClick={() => { setEditing(null); setShowModal(true); }}
+            style={{ display:'flex', alignItems:'center', gap:'6px', background:'#0f2d5a', color:'white', border:'none', borderRadius:'8px', padding:'8px 16px', cursor:'pointer', fontSize:'13px', fontWeight:700, flexShrink:0 }}>
+            <Plus size={14} /> Nouvelle Demande
+          </button>
+        </div>
+
+        {/* Table */}
+        <div style={{ background:'#fff', border:'1px solid #e2e8f0', borderRadius:'10px', overflow:'hidden' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'12px' }}>
+            <thead>
+              <tr style={{ background:'#0f2d5a' }}>
+                {['Réf','Objet','Type','De qui','Date','Priorité','Statut','Réf Réponse','Actions'].map(h => (
+                  <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:'10px', color:'#93c5fd', fontWeight:700, textTransform:'uppercase', whiteSpace:'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={9} style={{ padding:'40px', textAlign:'center', color:'#94a3b8' }}>
+                  {demandes.length === 0 ? 'Aucune demande enregistrée' : 'Aucun résultat'}
+                </td></tr>
+              ) : filtered.map((d, i) => {
+                const st = DEMANDE_STATUTS[d.statut] || DEMANDE_STATUTS.recue;
+                const pr = DEMANDE_PRIORITES[d.priorite] || DEMANDE_PRIORITES.normale;
+                const deQui = d.employeeNom || d.expediteur || '—';
+                return (
+                  <tr key={d._id || d.id} style={{ borderBottom:'1px solid #f1f5f9', background: i%2===0?'#fff':'#fafafa' }}>
+                    {/* Référence */}
+                    <td style={{ padding:'11px 14px', whiteSpace:'nowrap' }}>
+                      {d.reference
+                        ? <span style={{ background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe', borderRadius:'4px', padding:'2px 8px', fontSize:'10px', fontWeight:800 }}>{d.reference}</span>
+                        : <span style={{ color:'#cbd5e1', fontSize:'10px' }}>—</span>
+                      }
+                    </td>
+                    {/* Objet */}
+                    <td style={{ padding:'11px 14px' }}>
+                      <div style={{ fontWeight:700, color:'#0f2d5a', fontSize:'12px', maxWidth:'180px' }}>{d.titre}</div>
+                      {d.description && (
+                        <div style={{ fontSize:'10px', color:'#94a3b8', marginTop:'2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'180px' }}>
+                          {d.description}
+                        </div>
+                      )}
+                    </td>
+                    {/* Type */}
+                    <td style={{ padding:'11px 14px' }}>
+                      <span style={{ background:'#f1f5f9', color:'#475569', borderRadius:'4px', padding:'2px 7px', fontSize:'10px', fontWeight:600, whiteSpace:'nowrap' }}>
+                        {d.type}
+                      </span>
+                    </td>
+                    {/* De qui */}
+                    <td style={{ padding:'11px 14px', color:'#475569', fontSize:'11px', whiteSpace:'nowrap' }}>
+                      👤 {deQui}
+                    </td>
+                    {/* Date */}
+                    <td style={{ padding:'11px 14px', color:'#64748b', fontSize:'11px', whiteSpace:'nowrap' }}>{d.dateDemande}</td>
+                    {/* Priorité */}
+                    <td style={{ padding:'11px 14px' }}>
+                      <span style={{ background:pr.bg, color:pr.color, border:`1px solid ${pr.border}`, borderRadius:'4px', padding:'2px 7px', fontSize:'10px', fontWeight:700 }}>
+                        {pr.label}
+                      </span>
+                    </td>
+                    {/* Statut */}
+                    <td style={{ padding:'11px 14px' }}>
+                      <span style={{ background:st.bg, color:st.color, border:`1px solid ${st.border}`, borderRadius:'5px', padding:'3px 8px', fontSize:'10px', fontWeight:700, whiteSpace:'nowrap' }}>
+                        {st.icon} {st.label}
+                      </span>
+                    </td>
+                    {/* Réf Réponse */}
+                    <td style={{ padding:'11px 14px', whiteSpace:'nowrap' }}>
+                      {d.referenceReponse ? (
+                        <span style={{ background:'#f0fdf4', color:'#16a34a', border:'1px solid #86efac', borderRadius:'4px', padding:'2px 8px', fontSize:'10px', fontWeight:800 }}>
+                          {d.referenceReponse}
+                        </span>
+                      ) : (
+                        <span style={{ fontSize:'10px', color:'#cbd5e1', fontStyle:'italic' }}>⏳ Pending</span>
+                      )}
+                    </td>
+                    {/* Actions */}
+                    <td style={{ padding:'11px 14px' }}>
+                      <div style={{ display:'flex', gap:'5px' }}>
+                        <button onClick={() => setDetail(d)} title="Voir / Répondre"
+                          style={{ background:'#eff6ff', color:'#2563eb', border:'1px solid #bfdbfe', borderRadius:'5px', padding:'5px 8px', cursor:'pointer', display:'flex', alignItems:'center', gap:'3px', fontSize:'11px', fontWeight:700 }}>
+                          <MessageSquare size={11} /> Répondre
+                        </button>
+                        <button onClick={() => { setEditing(d); setShowModal(true); }}
+                          style={{ background:'#f8fafc', color:'#64748b', border:'1px solid #e2e8f0', borderRadius:'5px', padding:'5px 7px', cursor:'pointer', display:'flex' }}>
+                          <Edit2 size={11} />
+                        </button>
+                        <button onClick={() => handleDelete(d._id || d.id)}
+                          style={{ background:'#fef2f2', color:'#dc2626', border:'1px solid #fca5a5', borderRadius:'5px', padding:'5px 7px', cursor:'pointer', display:'flex' }}>
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showModal && (
+        <DemandeModal demande={editing} employees={employees} onSave={handleSave} onClose={() => { setShowModal(false); setEditing(null); }} />
+      )}
+      {detail && (
+        <DemandeDetailModal demande={detail} onUpdateStatut={handleUpdate} onClose={() => setDetail(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────
 export default function GestionRH() {
@@ -2781,6 +3343,7 @@ export default function GestionRH() {
   const [charges,    setCharges]      = useState([]);
   const [recettes,   setRecettes]     = useState([]);
   const [contrats,   setContrats]     = useState([]);
+  const [demandes,   setDemandes]     = useState([]);
   const [selectedEmp, setSelectedEmp] = useState(null);
 
   useEffect(() => {
@@ -2789,6 +3352,7 @@ export default function GestionRH() {
     store.getCharges().then(setCharges).catch(console.error);
     store.getRecettes().then(setRecettes).catch(console.error);
     store.getContrats().then(setContrats).catch(console.error);
+    store.getDemandes().then(setDemandes).catch(console.error);
   }, []);
 
   const handleSetView = (v) => {
@@ -2802,7 +3366,8 @@ export default function GestionRH() {
   const viewMeta = {
     dashboard:  { title: 'Dashboard',              subtitle: "Vue d'ensemble de la gestion RH" },
     employees:  { title: 'Employés',               subtitle: `${employees.length} employé(s) enregistré(s)` },
-    contrats:   { title: 'Contrats de Travail',    subtitle: `${contrats.length} contrat(s) enregistré(s)` },
+    contrats:       { title: 'Contrats de Travail',    subtitle: `${contrats.length} contrat(s) enregistré(s)` },
+    documentation:  { title: 'Documentation',          subtitle: `Demandes, suivi & traçabilité — ${demandes.length} demande(s)` },
     pointage:   { title: 'Feuille de Pointage',    subtitle: 'Présences — calcul automatique des jours et salaires' },
     paie:       { title: 'Générer Paie',            subtitle: 'Créer et imprimer un bulletin de paie' },
     historique: { title: 'Historique Paie',        subtitle: `${bulletins.length} bulletin(s) généré(s)` },
@@ -2823,7 +3388,8 @@ export default function GestionRH() {
           {view === 'pointage'   && <PointageView    employees={employees} />}
           {view === 'paie'       && <PaieView        employees={employees} setBulletins={setBulletins} selectedEmp={selectedEmp} setSelectedEmp={setSelectedEmp} />}
           {view === 'historique' && <HistoriqueView  bulletins={bulletins} setBulletins={setBulletins} />}
-          {view === 'finance'    && <FinanceView      charges={charges} setCharges={setCharges} recettes={recettes} setRecettes={setRecettes} bulletins={bulletins} />}
+          {view === 'finance'        && <FinanceView        charges={charges} setCharges={setCharges} recettes={recettes} setRecettes={setRecettes} bulletins={bulletins} />}
+          {view === 'documentation'  && <DocumentationView  employees={employees} demandes={demandes} setDemandes={setDemandes} />}
         </div>
       </div>
     </div>

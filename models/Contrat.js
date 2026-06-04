@@ -9,6 +9,8 @@ const ContratSchema = new mongoose.Schema({
   dateFin:               { type: String, default: '' },     // CDD / ANAPEC / Autre
   dateSignature:         { type: String, default: '' },     // CDI uniquement
   dateApprobationAnapec: { type: String, default: '' },     // ANAPEC uniquement
+  salaire:               { type: Number, default: 0 },      // Salaire du contrat
+  typeSalaire:           { type: String, default: 'mensuel' }, // mensuel | journalier
   statut:                { type: String, default: 'actif' },// actif | termine | en_attente_signature | en_attente_anapec
   motifFin:              { type: String, default: '' },     // Promotion CDI, Fin CDD, Démission...
   note:                  { type: String, default: '' },
